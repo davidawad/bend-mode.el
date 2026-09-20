@@ -98,6 +98,39 @@
   (bend-mode-test--with-buffer "#{ a block comment #}\ndef f() -> U32:\n  1\n"
     (should (eq (bend-mode-test--face-at "def") 'font-lock-keyword-face))))
 
+(ert-deftest bend-mode-test-deeply-nested-block-comment-depth-aware ()
+  ;; A discriminating regression test for the depth-aware rewrite: one
+  ;; outer comment containing two SEPARATE nested pairs, with plain
+  ;; text "c" in between them at depth 1.  Under the old
+  ;; toggle-per-occurrence implementation, "b" and "d" (both inside a
+  ;; nested pair) were wrongly classified as NOT in a comment -- see
+  ;; `bend-mode-syntax-propertize's docstring for why.  Every position
+  ;; below must actually be inside the comment via a real depth count,
+  ;; not by parity coincidence.
+  (bend-mode-test--with-buffer
+      "#{ a #{ b #} c #{ d #} e #}\ndef f() -> U32:\n  1\n"
+    (goto-char (point-min))
+    (search-forward "b")
+    (should (nth 4 (syntax-ppss (point))))
+    (goto-char (point-min))
+    (search-forward "c")
+    (should (nth 4 (syntax-ppss (point))))
+    (goto-char (point-min))
+    (search-forward "d")
+    (should (nth 4 (syntax-ppss (point))))
+    (goto-char (point-min))
+    (search-forward "e")
+    (should (nth 4 (syntax-ppss (point))))
+    (should (eq (bend-mode-test--face-at "def") 'font-lock-keyword-face))))
+
+(ert-deftest bend-mode-test-unterminated-block-comment-does-not-hang ()
+  ;; An unterminated `#{' (no matching `#}' before EOF) must be handled
+  ;; gracefully -- treated as open-to-EOF -- rather than hanging or
+  ;; erroring.  This is a smoke test only; success is simply that
+  ;; `font-lock-ensure' returns.
+  (bend-mode-test--with-buffer "#{ never closed\ndef f() -> U32:\n  1\n"
+    (should t)))
+
 ;;; Indentation
 
 (ert-deftest bend-mode-test-indent-after-colon ()

@@ -19,11 +19,11 @@ will happily link to it. This package takes that invitation.
 ## What it does
 
 - **Syntax highlighting**: line comments (`# ...`) and block comments
-  (`#{ ... #}`, correct for a single level, approximate if genuinely nested —
-  see `bend-mode-syntax-propertize`'s docstring), strings, char literals,
-  keywords, the name in `def NAME`/`law NAME`, uppercase type/constructor
-  names, numeric literals (`U32`, `F32`, `Nat` with its `n` suffix), quantity
-  markers (`&0` `&1` `&2`), and `?hole`/`?TODO` goals.
+  (`#{ ... #}`, depth-aware for arbitrarily nested pairs via a manual
+  counting scan — see `bend-mode-syntax-propertize`'s docstring), strings,
+  char literals, keywords, the name in `def NAME`/`law NAME`, uppercase
+  type/constructor names, numeric literals (`U32`, `F32`, `Nat` with its `n`
+  suffix), quantity markers (`&0` `&1` `&2`), and `?hole`/`?TODO` goals.
 - **Indentation**: Bend 2 uses Python-shaped off-side blocks. `bend-mode`
   copies the previous code line's indentation, adding one level
   (`bend-mode-indent-offset`, default 2, matching every example in Bend's own
@@ -153,9 +153,6 @@ bend examples/02-parallel-pow2.bend   # -> 1024
 - Smart dedent (aligning a new `case`/`elif`/sibling block back to its
   matching level automatically, `python-indent`-style) — the current
   indentation is deliberately the simplest correct v1.
-- True depth-aware nested block comments — see
-  `bend-mode-syntax-propertize`'s docstring for exactly where the current
-  approximation falls short and why.
 - Drop `bend-mode-flymake.el` in favor of Eglot diagnostics the moment a
   real compiler-backed Bend 2 LSP exists (see
   [bendlang/bend#865](https://github.com/bendlang/bend/pull/865) for the

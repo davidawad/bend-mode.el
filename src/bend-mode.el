@@ -26,9 +26,9 @@
 ;;
 ;; Provides:
 ;; - Syntax highlighting: comments (line `#...' and block `#{ ... #}',
-;;   correct for a single level and approximate -- see
-;;   `bend-mode-syntax-propertize' -- when actually nested), strings,
-;;   char literals, keywords, the `def NAME'/`law NAME' binding,
+;;   depth-aware for arbitrarily nested pairs -- see
+;;   `bend-mode-syntax-propertize'), strings, char literals, keywords,
+;;   the `def NAME'/`law NAME' binding,
 ;;   uppercase type/constructor names, numeric literals (`U32', `F32',
 ;;   `Nat' with its `n' suffix), quantity markers (`&0' `&1' `&2'), and
 ;;   `?hole'/`?TODO' goals.
@@ -103,33 +103,68 @@ location) is not on the variable `exec-path'."
 
 (defun bend-mode-syntax-propertize (start end)
   "Syntax-propertize function for `bend-mode', covering START to END.
-Marks every `#{'/`#}' occurrence's leading `#' (only -- see below) with
-Emacs's generic-comment syntax class `!', so `#{ ... #}' delimits a
-block comment instead of `#' alone reading as a line comment.  The
-`{'/`}' half of each delimiter is deliberately left with its ordinary
-paren-matching class from `bend-mode-syntax-table', since `{'/`}' are
-also real Bend syntax outside a comment (`K{x, y}').
 
-Class `!' toggles a boolean in-comment state per occurrence; it does
-not track nesting depth.  `#{ #{ #} #}' therefore closes at its second
-`#}', not its first (toggle count is even there, same as a single
-flat pair) -- correct for the overwhelmingly common single-level
-case, merely approximate for a doubly (or deeper) nested one.  A truly
-depth-aware scan would need to inspect the occurrences it has already
-placed as it goes, i.e. a stateful loop instead of this flat regexp
-sweep; left for a v2 if it ever matters in practice.
+Marks the leading `#' of each `#{'/`#}' delimiter with Emacs's
+generic-comment syntax class `!' (`(string-to-syntax \"!\")'), so
+`#{ ... #}' delimits a block comment instead of `#' alone reading as
+a line comment.  The `{'/`}' half of each delimiter is deliberately
+left with its ordinary paren-matching class from
+`bend-mode-syntax-table', since `{'/`}' are also real Bend syntax
+outside a comment (`K{x, y}').
+
+Bend 2 allows `#{ ... #}' to nest arbitrarily deep, so this is a
+depth-aware scan, not a flat per-occurrence toggle: it finds each
+outermost `#{' (one not already inside a pair currently being
+tracked), then scans forward counting nested `#{'/`#}' occurrences
+until the count returns to zero at that opener's true matching `#}'
+-- or end of buffer, for an unterminated comment, which is handled by
+simply not marking a closer rather than erroring (the buffer then
+reads as one open comment through EOF).  Only the outermost opener's
+`#' and its true matching closer's `#' are marked; every
+`#{'/`#}' strictly between them is left with no `syntax-table'
+property at all.  That is sufficient: once the outer pair correctly
+toggles comment state, Emacs's own scanner treats everything between
+the two marked characters as comment body, nested delimiters
+included, with no further special-casing needed.  The scan then
+resumes after the matched close, looking for the next outermost
+`#{'.
+
+START and END are intentionally unused: rather than reason through
+syntax-propertize's incremental-region contract (a call for one
+region may still need context from before it, or a match past it, to
+classify correctly under arbitrary nesting), this rescans the whole
+buffer from `point-min' on every call, clearing and reapplying every
+`syntax-table' property this function owns first.  That trades a
+little performance for straightforward correctness, an acceptable
+tradeoff for the small files this mode targets.
 
 Also deliberately does not special-case a `#{'/`#}' written inside a
 string literal (`\"a #{ b\"): calling `syntax-ppss' from inside a
 syntax-propertize function to ask about a position at or past START
 recurses back into this very function (it re-runs syntax-propertize to
 catch its cache up to point first) -- a documented footgun, not an
-oversight.  A comment delimiter inside a real Bend string is rare
-enough that the tradeoff is accepted for v1."
-  (goto-char start)
-  (while (re-search-forward "#{\\|#}" end t)
-    (put-text-property (match-beginning 0) (1+ (match-beginning 0))
-                        'syntax-table (string-to-syntax "!"))))
+oversight; an earlier version of this function called `syntax-ppss'
+for exactly this check and hung the ERT suite outright.  A comment
+delimiter inside a real Bend string is rare enough that the tradeoff
+is accepted."
+  (ignore start end)
+  (remove-text-properties (point-min) (point-max) '(syntax-table nil))
+  (goto-char (point-min))
+  (while (re-search-forward "#{" nil t)
+    (let ((open-start (match-beginning 0))
+          (depth 1)
+          (close-start nil))
+      (while (and (> depth 0) (re-search-forward "#{\\|#}" nil t))
+        (if (string= (match-string 0) "#{")
+            (setq depth (1+ depth))
+          (setq depth (1- depth))
+          (when (zerop depth)
+            (setq close-start (match-beginning 0)))))
+      (put-text-property open-start (1+ open-start)
+                          'syntax-table (string-to-syntax "!"))
+      (when close-start
+        (put-text-property close-start (1+ close-start)
+                            'syntax-table (string-to-syntax "!"))))))
 
 ;;; Font lock
 
