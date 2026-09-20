@@ -57,7 +57,7 @@ export PATH="$HOME/.bend/bin:$PATH"
 ```elisp
 (straight-use-package
  '(bend-mode :type git :host github :repo "davidawad/bend-mode.el"
-             :files ("bend-mode.el" "bend-mode-flymake.el")))
+             :files ("src/bend-mode.el" "src/bend-mode-flymake.el")))
 ```
 
 ### use-package + straight.el
@@ -65,16 +65,17 @@ export PATH="$HOME/.bend/bin:$PATH"
 ```elisp
 (use-package bend-mode
   :straight (:type git :host github :repo "davidawad/bend-mode.el"
-             :files ("bend-mode.el" "bend-mode-flymake.el"))
+             :files ("src/bend-mode.el" "src/bend-mode-flymake.el"))
   :mode "\\.bend\\'"
   :hook (bend-mode . flymake-mode))
 ```
 
 ### Manual
 
-Clone this repo onto your `load-path`, then:
+Clone this repo and add its `src/` directory to your `load-path`, then:
 
 ```elisp
+(add-to-list 'load-path "/path/to/bend-mode.el/src")
 (require 'bend-mode)
 (require 'bend-mode-flymake)  ; optional: flymake diagnostics
 ```
@@ -124,8 +125,27 @@ the pure parsing functions against canned `bend --check-only` output — no
 installed:
 
 ```sh
-emacs -Q --batch -L . -l bend-mode.el -l bend-mode-flymake.el \
+emacs -Q --batch -L src -l src/bend-mode.el -l src/bend-mode-flymake.el \
   -l test/bend-mode-test.el -f ert-run-tests-batch-and-exit
+```
+
+## Examples
+
+`examples/` holds small, checked-against-the-real-compiler Bend 2 programs
+(bend 2.0.22) meant to double as a live smoke test for this mode -- open one,
+confirm highlighting/indentation look right, and optionally run it:
+
+| File | Demonstrates |
+| --- | --- |
+| `01-hello.bend` | Minimal `IO` program; the `(expr : T)` operator-annotation rule |
+| `02-parallel-pow2.bend` | Fork/join "parallel let" -- Bend's headline feature |
+| `03-shapes.bend` | An ADT and a total `match` (no `if` in Bend) |
+| `04-arrays.bend` | Affine `Array<T>` ownership threading -- and the two gotchas that tripped this repo's own author on the first try (see its comments) |
+| `05-lists.bend` | `List.map`/`List.foldl` with an explicit quantity argument |
+| `06-law-and-proof.bend` | A `law` + its proving `def` -- Bend's "blocks AI mistakes via proof" claim, made concrete |
+
+```sh
+bend examples/02-parallel-pow2.bend   # -> 1024
 ```
 
 ## Roadmap

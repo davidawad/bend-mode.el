@@ -2,10 +2,13 @@
 
 Standalone, publishable Emacs major mode for Bend 2
 (https://github.com/bendlang/bend). Font-lock, indentation and Eglot wiring
-live in `bend-mode.el`; the Flymake `--check-only` diagnostics backend is
-the separate file `bend-mode-flymake.el` (`require` it separately) because
-it is the piece most likely to need replacing outright once a real
-compiler-backed Bend 2 LSP exists upstream.
+live in `src/bend-mode.el`; the Flymake `--check-only` diagnostics backend
+is the separate file `src/bend-mode-flymake.el` (`require` it separately)
+because it is the piece most likely to need replacing outright once a real
+compiler-backed Bend 2 LSP exists upstream. `examples/*.bend` are small
+programs checked against the real 2.0.22 compiler -- both a doc set and a
+live smoke-test fixture; verify a changed example still runs (`bend
+examples/NAME.bend`) before committing it.
 
 ## For agents
 
@@ -14,8 +17,9 @@ compiler-backed Bend 2 LSP exists upstream.
   the pure parsing functions (`bend-mode-flymake--parse` /
   `--block-message`) against canned output strings -- no `bend` process is
   spawned, so the whole suite runs offline with no toolchain installed. Run
-  via `emacs -Q --batch -L . -l bend-mode.el -l bend-mode-flymake.el -l
-  test/bend-mode-test.el -f ert-run-tests-batch-and-exit`.
+  via `emacs -Q --batch -L src -l src/bend-mode.el -l
+  src/bend-mode-flymake.el -l test/bend-mode-test.el -f
+  ert-run-tests-batch-and-exit`.
 - `checkdoc-file` and `batch-byte-compile` should both be silent on both
   source files before any change lands; check both after editing.
 - The nested-block-comment behavior in `bend-mode-syntax-propertize` is a

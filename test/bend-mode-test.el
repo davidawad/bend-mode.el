@@ -13,16 +13,19 @@
 ;; installed.
 ;;
 ;; Standalone: from this directory,
-;;   emacs -Q --batch -L .. -l ../bend-mode.el -l ../bend-mode-flymake.el \
-;;     -l bend-mode-test.el -f ert-run-tests-batch-and-exit
+;;   emacs -Q --batch -L ../src -l ../src/bend-mode.el \
+;;     -l ../src/bend-mode-flymake.el -l bend-mode-test.el \
+;;     -f ert-run-tests-batch-and-exit
 
 ;;; Code:
 
 (require 'ert)
 (add-to-list 'load-path
-             (file-name-directory
-              (directory-file-name
-               (file-name-directory (or load-file-name buffer-file-name)))))
+             (expand-file-name
+              "src"
+              (file-name-directory
+               (directory-file-name
+                (file-name-directory (or load-file-name buffer-file-name))))))
 (require 'bend-mode)
 (require 'bend-mode-flymake)
 
