@@ -340,7 +340,10 @@ compilation buffer; run it again to update."
   (setq-local comment-end "")
   (setq-local comment-start-skip "#+[ \t]*")
   (setq-local indent-line-function #'bend-mode-indent-line)
-  (setq-local indent-tabs-mode nil))
+  (setq-local indent-tabs-mode nil)
+  ;; Eglot sends `tab-width' as the formatter's tabSize; keep it equal
+  ;; to our own indent step so `eglot-format-buffer' agrees with TAB.
+  (setq-local tab-width bend-mode-indent-offset))
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.bend\\'" . bend-mode))

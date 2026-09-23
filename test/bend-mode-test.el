@@ -205,6 +205,13 @@ The code is incomplete, and not a valid proof yet.
       (should (equal (car (bend-mode--eglot-contact))
                      "/usr/bin/bend2-fmt-lsp")))))
 
+(ert-deftest bend-mode-test-tab-width-matches-indent-offset ()
+  ;; Eglot's formatting request uses `tab-width' as tabSize.
+  (let ((bend-mode-indent-offset 3))
+    (with-temp-buffer
+      (bend-mode)
+      (should (= tab-width 3)))))
+
 (provide 'bend-mode-test)
 
 ;;; bend-mode-test.el ends here
