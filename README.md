@@ -100,16 +100,20 @@ needs the real directory), deleted afterward.
 
 ## Formatting via Eglot
 
-Requires `bend2-fmt-lsp` on `PATH`. It isn't published to any package
-registry yet — build it from the `bend` checkout:
+Requires `bend2-fmt-lsp`. It isn't published to any package registry yet,
+so `bend-mode` builds it for you from Bend's own repository (needs git and
+Node.js 22+ with npm):
 
-```sh
-git clone https://github.com/bendlang/bend
-cd bend/tools/bend-fmt-lsp
-npm install && npm run build
-# put dist/server.js somewhere PATH-reachable, or alias `bend2-fmt-lsp` to
-# `node /path/to/dist/server.js`
 ```
+M-x bend-mode-install-fmt-lsp
+```
+
+That sparse-clones `tools/bend-fmt-lsp` at `bend-mode-fmt-lsp-ref`
+(default `main`), builds it, and installs it with `npm install -g --prefix
+~/.bend`, so the executable lands in `~/.bend/bin` next to `bend` itself.
+Run it again to update. Eglot finds the server on `exec-path` first, then
+falls back to `bend-mode-fmt-lsp-prefix`/bin, so `~/.bend/bin` doesn't
+need to be on `PATH`.
 
 Then:
 

@@ -260,9 +260,73 @@ indentation-sensitive modes make.  See the README Roadmap."
 
 ;;; Eglot
 
+(defcustom bend-mode-fmt-lsp-repository "https://github.com/bendlang/bend"
+  "Git repository whose tools/bend-fmt-lsp holds `bend2-fmt-lsp'."
+  :type 'string
+  :group 'bend)
+
+(defcustom bend-mode-fmt-lsp-ref "main"
+  "Branch or tag of `bend-mode-fmt-lsp-repository' to install from."
+  :type 'string
+  :group 'bend)
+
+(defcustom bend-mode-fmt-lsp-prefix "~/.bend"
+  "The npm prefix that `bend-mode-install-fmt-lsp' installs into.
+The executable lands in PREFIX/bin, next to the `bend' binary that
+bend's own installer puts in ~/.bend/bin."
+  :type 'directory
+  :group 'bend)
+
+(defun bend-mode-fmt-lsp-executable ()
+  "Return the `bend2-fmt-lsp' executable to run.
+Prefer one on the variable `exec-path'; otherwise use the copy
+`bend-mode-install-fmt-lsp' puts under `bend-mode-fmt-lsp-prefix'."
+  (or (executable-find "bend2-fmt-lsp")
+      (expand-file-name "bin/bend2-fmt-lsp" bend-mode-fmt-lsp-prefix)))
+
+(defun bend-mode--eglot-contact (&optional _interactive _project)
+  "Return the Eglot contact for `bend-mode': the formatter over stdio."
+  (list (bend-mode-fmt-lsp-executable) "--stdio"))
+
 (with-eval-after-load 'eglot
   (add-to-list 'eglot-server-programs
-               '(bend-mode . ("bend2-fmt-lsp" "--stdio"))))
+               '(bend-mode . bend-mode--eglot-contact)))
+
+(defun bend-mode-fmt-lsp--install-command ()
+  "Return the shell command to build and install `bend2-fmt-lsp'.
+Sparse-clones only tools/bend-fmt-lsp at `bend-mode-fmt-lsp-ref' into a
+throwaway directory, builds it, and installs the packed result globally
+under `bend-mode-fmt-lsp-prefix'."
+  (let ((prefix (expand-file-name bend-mode-fmt-lsp-prefix)))
+    (mapconcat
+     #'identity
+     (list "set -e"
+           "tmp=$(mktemp -d)"
+           "trap 'rm -rf \"$tmp\"' EXIT"
+           (format "git clone --quiet --depth 1 --filter=blob:none --sparse --branch %s %s \"$tmp/bend\""
+                   (shell-quote-argument bend-mode-fmt-lsp-ref)
+                   (shell-quote-argument bend-mode-fmt-lsp-repository))
+           "git -C \"$tmp/bend\" sparse-checkout set tools/bend-fmt-lsp"
+           "cd \"$tmp/bend/tools/bend-fmt-lsp\""
+           "npm ci --no-audit --no-fund || npm install --no-audit --no-fund"
+           "npm run build"
+           "tarball=$(npm pack --silent | tail -n 1)"
+           (format "npm install -g --no-audit --no-fund --prefix %s \"$PWD/$tarball\""
+                   (shell-quote-argument prefix))
+           (format "echo \"Installed: %s/bin/bend2-fmt-lsp\"" prefix))
+     "\n")))
+
+;;;###autoload
+(defun bend-mode-install-fmt-lsp ()
+  "Build and install `bend2-fmt-lsp' from Bend's own repository.
+Needs git and Node.js 22+ with npm.  Runs asynchronously in a
+compilation buffer; run it again to update."
+  (interactive)
+  (dolist (tool '("git" "npm"))
+    (unless (executable-find tool)
+      (user-error "Cannot install bend2-fmt-lsp: `%s' not found" tool)))
+  (compilation-start (bend-mode-fmt-lsp--install-command) nil
+                     (lambda (_mode) "*bend2-fmt-lsp install*")))
 
 ;;; Mode definition
 

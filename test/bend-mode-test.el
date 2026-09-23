@@ -186,6 +186,25 @@ The code is incomplete, and not a valid proof yet.
     (should (= (caar hits) 1))
     (should (string-match-p "a match cannot scrutinize" (cdar hits)))))
 
+(ert-deftest bend-mode-test-fmt-lsp-install-command ()
+  (let* ((bend-mode-fmt-lsp-prefix "/opt/bend prefix")
+         (bend-mode-fmt-lsp-ref "v2.0.26")
+         (cmd (bend-mode-fmt-lsp--install-command)))
+    (should (string-match-p "--branch v2\\.0\\.26 " cmd))
+    (should (string-match-p "sparse-checkout set tools/bend-fmt-lsp" cmd))
+    (should (string-match-p (regexp-quote (shell-quote-argument "/opt/bend prefix")) cmd))
+    (should (string-match-p "trap 'rm -rf" cmd))))
+
+(ert-deftest bend-mode-test-eglot-contact-falls-back-to-prefix ()
+  (let ((bend-mode-fmt-lsp-prefix "/opt/bendprefix"))
+    (cl-letf (((symbol-function 'executable-find) (lambda (_) nil)))
+      (should (equal (bend-mode--eglot-contact)
+                     '("/opt/bendprefix/bin/bend2-fmt-lsp" "--stdio"))))
+    (cl-letf (((symbol-function 'executable-find)
+               (lambda (_) "/usr/bin/bend2-fmt-lsp")))
+      (should (equal (car (bend-mode--eglot-contact))
+                     "/usr/bin/bend2-fmt-lsp")))))
+
 (provide 'bend-mode-test)
 
 ;;; bend-mode-test.el ends here
