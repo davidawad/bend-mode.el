@@ -17,9 +17,10 @@ examples/NAME.bend`) before committing it.
   the pure parsing functions (`bend-mode-flymake--parse` /
   `--block-message`) against canned output strings -- no `bend` process is
   spawned, so the whole suite runs offline with no toolchain installed. Run
-  via `emacs -Q --batch -L src -l src/bend-mode.el -l
-  src/bend-mode-flymake.el -l test/bend-mode-test.el -f
-  ert-run-tests-batch-and-exit`.
+  via `emacs -Q --batch -L src -l test/bend-mode-test.el -f
+  ert-run-tests-batch-and-exit`. The `bend-ts-mode` tests (src/bend-ts-mode.el,
+  tree-sitter-bend2 pinned by `bend-ts-mode-grammar-revision`) build the
+  grammar into a temp dir when it is not installed, and skip without it.
 - `checkdoc-file` and `batch-byte-compile` should both be silent on both
   source files before any change lands; check both after editing.
 - The nested-block-comment behavior in `bend-mode-syntax-propertize` is a

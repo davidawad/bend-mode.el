@@ -42,6 +42,13 @@ will happily link to it. This package takes that invitation.
   surfaces per check; no hover, no completion. Replace this file outright
   the day a real Bend 2 LSP reports diagnostics itself.
 
+- **Tree-sitter** (`bend-ts-mode`, `src/bend-ts-mode.el`, Emacs 29+): the
+  same faces from [tree-sitter-bend2](https://github.com/davidawad/tree-sitter-bend2),
+  tree-based indentation that dedents `case` clauses and wrapped arguments,
+  Imenu (Def / Type / Law) and defun navigation. It derives from `bend-mode`,
+  so the keymap, syntax table, Eglot wiring and Flymake backend are shared.
+  See [Tree-sitter mode](#tree-sitter-mode).
+
 ## Install
 
 Bend 2 itself first:
@@ -57,7 +64,8 @@ export PATH="$HOME/.bend/bin:$PATH"
 ```elisp
 (straight-use-package
  '(bend-mode :type git :host github :repo "davidawad/bend-mode.el"
-             :files ("src/bend-mode.el" "src/bend-mode-flymake.el")))
+             :files ("src/bend-mode.el" "src/bend-mode-flymake.el"
+                     "src/bend-ts-mode.el")))
 ```
 
 ### use-package + straight.el
@@ -65,7 +73,8 @@ export PATH="$HOME/.bend/bin:$PATH"
 ```elisp
 (use-package bend-mode
   :straight (:type git :host github :repo "davidawad/bend-mode.el"
-             :files ("src/bend-mode.el" "src/bend-mode-flymake.el"))
+             :files ("src/bend-mode.el" "src/bend-mode-flymake.el"
+                     "src/bend-ts-mode.el"))
   :mode "\\.bend\\'"
   :hook (bend-mode . flymake-mode))
 ```
@@ -78,15 +87,51 @@ Clone this repo and add its `src/` directory to your `load-path`, then:
 (add-to-list 'load-path "/path/to/bend-mode.el/src")
 (require 'bend-mode)
 (require 'bend-mode-flymake)  ; optional: flymake diagnostics
+(require 'bend-ts-mode)       ; optional: tree-sitter mode (Emacs 29+)
 ```
 
 `bend-mode.el` alone registers `bend-mode` for `*.bend` files and wires up
 Eglot; `bend-mode-flymake.el` is a separate, optional `require` (see its
 file header for why it's split out).
 
+## Tree-sitter mode
+
+`bend-ts-mode` needs the tree-sitter-bend2 grammar, pinned to revision
+`8ad225d157f7409b59c995a11a86908123b9b20c` (`bend-ts-mode-grammar-revision`).
+Install it once (needs git and a C compiler):
+
+```
+M-x bend-ts-mode-install-grammar
+```
+
+That clones the grammar, checks out the pinned revision and builds
+`libtree-sitter-bend` into `~/.emacs.d/tree-sitter`. (Emacs 30's own
+`treesit-install-language-grammar` cannot check out a bare commit hash, so
+the installer does the pinning itself; the `bend` entry it adds to
+`treesit-language-source-alist` is for the default branch.) The grammar's
+internal name is `bend2`; `treesit-load-name-override-list` maps the Emacs
+language `bend` onto its `tree_sitter_bend2` symbol.
+
+Once the grammar is installed, `.bend` files open in `bend-ts-mode`
+automatically (`major-mode-remap-alist`); without it they open in the regex
+`bend-mode`, with a one-time message. Set `bend-ts-mode-prefer-treesit` to nil
+to always use the regex mode. Calling `M-x bend-ts-mode` directly without the
+grammar signals an error naming the installer.
+
+Font-lock level 3 (the default) matches the regex mode's faces; level 4 adds
+parameters, operators and punctuation. Indentation caveat: indentation *is*
+syntax in Bend, so the tree only describes code that is already laid out
+sensibly. Re-indenting well-formed code is a no-op; on a blank new line, or
+code the parser cannot read, the rules fall back to `bend-mode`'s
+copy-the-previous-line rule. Measured against `formatBend` output
+(bend2-fmt-lsp) on 220 real Bend 2 files, re-indenting leaves 94.3% of the
+146,390 non-blank lines unchanged (114 files byte-identical); what is left is
+mostly deeper continuation nesting, which depends on how the author wrapped
+the line.
+
 ## Flymake diagnostics
 
-`bend-mode` registers the backend buffer-locally on its own; turning on
+`bend-mode` (and so `bend-ts-mode`) registers the backend buffer-locally on its own; turning on
 `flymake-mode` is the only wiring left to you:
 
 ```elisp
@@ -129,9 +174,13 @@ the pure parsing functions against canned `bend --check-only` output — no
 installed:
 
 ```sh
-emacs -Q --batch -L src -l src/bend-mode.el -l src/bend-mode-flymake.el \
-  -l test/bend-mode-test.el -f ert-run-tests-batch-and-exit
+emacs -Q --batch -L src -l test/bend-mode-test.el \
+  -f ert-run-tests-batch-and-exit
 ```
+
+The `bend-ts-mode` tests need the grammar. The test setup uses an installed
+one, or builds the pinned one into a temp directory (network, git and a C
+compiler); if that is not possible they are skipped.
 
 ## Examples
 
@@ -161,9 +210,9 @@ bend examples/02-parallel-pow2.bend   # -> 1024
   real compiler-backed Bend 2 LSP exists (see
   [bendlang/bend#865](https://github.com/bendlang/bend/pull/865) for the
   prior art and why it wasn't merged upstream).
-- A tree-sitter grammar, if Bend 2's syntax settles enough to be worth
-  porting [LaBatata101/tree-sitter-bend](https://github.com/LaBatata101/tree-sitter-bend)
-  (written for Bend 1) rather than starting fresh.
+- Tree-based indentation for wrapped continuation lines that matches
+  `bend2-fmt-lsp` in every nesting case, and a `locals`-style query for
+  scope-aware highlighting.
 
 ## License
 
