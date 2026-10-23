@@ -248,8 +248,69 @@ BOL is the position of the first non-whitespace character on the line."
     (if (eq (char-before) ?:) bend-mode-indent-offset 0)))
 
 (defun bend-ts-mode--inside-token-p (_node parent _bol)
-  "Non-nil if the line starts inside a multi-line comment, per PARENT."
+  "Non-nil if the line is inside a multi-line comment, per PARENT."
   (member (treesit-node-type parent) '("block_comment")))
+
+;; A comment after a blank line introduces what follows it, so it takes
+;; that code's indentation (the previous line says nothing about it).
+(defun bend-ts-mode--detached-comment-p (node _parent bol)
+  "Non-nil if NODE is a comment at BOL whose comment block follows a blank line.
+Walks up over the comment-only lines above BOL; the block is detached
+when it reaches a blank line or the start of the buffer."
+  (and node
+       (member (treesit-node-type node) '("comment" "block_comment"))
+       (save-excursion
+         (goto-char bol)
+         (let (result)
+           (while (and (null result) (zerop (forward-line -1)))
+             (back-to-indentation)
+             (cond ((eolp) (setq result 'yes))
+                   ((eq (char-after) ?#))
+                   (t (setq result 'no))))
+           (not (eq result 'no))))))
+
+(defun bend-ts-mode--next-code-anchor (_node _parent bol)
+  "Anchor on the first code line after the comment lines from BOL.
+Falls back to the previous code line at the end of the buffer."
+  (save-excursion
+    (goto-char bol)
+    (forward-line 1)
+    (while (and (not (eobp))
+                (progn (back-to-indentation)
+                       (or (eolp) (eq (char-after) ?#))))
+      (forward-line 1))
+    (if (eobp)
+        (bend-ts-mode--previous-code-bol bol)
+      (back-to-indentation)
+      (point))))
+
+;; A line that continues a statement (wrapped call arguments, a list
+;; spread over several lines) sits one level under the line the
+;; statement starts on.
+(defun bend-ts-mode--enclosing-item (node)
+  "Return the nearest ancestor of NODE that is a block item or declaration."
+  (treesit-parent-until
+   node
+   (lambda (n)
+     (string-match-p
+      (rx (or (regexp bend-ts-mode--block-item-regexp)
+              (seq bos (or "def_declaration" "law_declaration"
+                           "type_declaration" "import_statement")
+                   eos)))
+      (treesit-node-type n)))))
+
+(defun bend-ts-mode--continuation-p (node _parent _bol)
+  "Non-nil if NODE continues a statement begun on an earlier line."
+  (and node
+       (not (equal (treesit-node-type node) "ERROR"))
+       (bend-ts-mode--enclosing-item node)))
+
+(defun bend-ts-mode--continuation-anchor (node _parent _bol)
+  "Anchor on the indentation of the first line of the statement around NODE."
+  (save-excursion
+    (goto-char (treesit-node-start (bend-ts-mode--enclosing-item node)))
+    (back-to-indentation)
+    (point)))
 
 (defvar bend-ts-mode--indent-rules
   `((bend
@@ -258,12 +319,17 @@ BOL is the position of the first non-whitespace character on the line."
      ;; Blank line (nothing to look at yet): the regex mode's rule.
      (no-node bend-ts-mode--previous-code-anchor
               bend-ts-mode--previous-code-offset)
+     (bend-ts-mode--detached-comment-p bend-ts-mode--next-code-anchor 0)
      ;; Top-level declarations.
      ((parent-is "source_file") column-0 0)
      ;; Block items sit one level under the line that opens the block.
      ((node-is ,bend-ts-mode--block-item-regexp)
       parent-bol bend-mode-indent-offset)
-     ;; Comments, continuation lines and unparsed code.
+     ;; A closing bracket lines up with the line its opener is on.
+     ((node-is "[])}]") parent-bol 0)
+     (bend-ts-mode--continuation-p bend-ts-mode--continuation-anchor
+                                   bend-mode-indent-offset)
+     ;; Attached comments and unparsed code.
      (catch-all bend-ts-mode--previous-code-anchor
                 bend-ts-mode--previous-code-offset)))
   "Indentation rules of `bend-ts-mode' (see `treesit-simple-indent-rules').")
