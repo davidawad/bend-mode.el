@@ -236,8 +236,7 @@ git and a C compiler)."
                (progn
                  (make-directory bend-mode-test--grammar-dir t)
                  (let ((inhibit-message t))
-                   (treesit-install-language-grammar
-                    'bend bend-mode-test--grammar-dir))
+                   (bend-ts-mode-install-grammar bend-mode-test--grammar-dir))
                  (bend-ts-mode-grammar-available-p))
              (error nil)))))
 
@@ -265,8 +264,9 @@ git and a C compiler)."
 (ert-deftest bend-ts-mode-test-grammar-registered ()
   (let ((entry (assq 'bend treesit-language-source-alist)))
     (should entry)
-    (should (equal (nth 2 entry) bend-ts-mode-grammar-revision))
-    (should (string-match-p "tree-sitter-bend2" (nth 1 entry)))))
+    (should (string-match-p "tree-sitter-bend2" (nth 1 entry)))
+    (should (string-match-p "\\`[0-9a-f]\\{40\\}\\'"
+                            bend-ts-mode-grammar-revision))))
 
 (ert-deftest bend-ts-mode-test-falls-back-without-grammar ()
   (let ((bend-ts-mode--fallback-noted t))
@@ -282,9 +282,13 @@ git and a C compiler)."
 
 (ert-deftest bend-ts-mode-test-derives-from-bend-mode ()
   (should (provided-mode-derived-p 'bend-ts-mode 'bend-mode))
-  (should (eq (keymap-parent bend-ts-mode-map) bend-mode-map))
+  (should (eq (get 'bend-ts-mode 'derived-mode-parent) 'bend-mode))
   (should (eq (char-table-parent bend-ts-mode-syntax-table)
               bend-mode-syntax-table)))
+
+(ert-deftest bend-ts-mode-test-inherits-keymap ()
+  (bend-mode-test--with-ts-buffer ""
+    (should (eq (keymap-parent bend-ts-mode-map) bend-mode-map))))
 
 (ert-deftest bend-ts-mode-test-maybe-uses-ts ()
   (skip-unless (bend-mode-test--ts-p))

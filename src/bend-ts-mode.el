@@ -79,10 +79,20 @@ bump it together with the queries below.")
 ;; The grammar's language name is `bend2' (the C symbol is
 ;; `tree_sitter_bend2'), but Emacs-side the language is `bend', matching
 ;; the mode name.
+;; Emacs 30's `treesit-install-language-grammar' passes REVISION to
+;; `git clone -b', which accepts a branch or tag but not a commit hash;
+;; the pin is therefore enforced by `bend-ts-mode-install-grammar'
+;; itself, and the commit goes in the recipe's COMMIT slot only where
+;; Emacs (31+) has one.
+(defun bend-ts-mode--source-recipe ()
+  "Return the `treesit-language-source-alist' entry for Bend."
+  `(bend ,bend-ts-mode-grammar-url nil "src"
+         ,@(when (>= emacs-major-version 31)
+             `(nil nil ,bend-ts-mode-grammar-revision))))
+
 (when (boundp 'treesit-language-source-alist)
   (unless (assq 'bend treesit-language-source-alist)
-    (push `(bend ,bend-ts-mode-grammar-url ,bend-ts-mode-grammar-revision "src")
-          treesit-language-source-alist)))
+    (push (bend-ts-mode--source-recipe) treesit-language-source-alist)))
 
 (when (boundp 'treesit-load-name-override-list)
   (unless (assq 'bend treesit-load-name-override-list)
@@ -96,21 +106,34 @@ bump it together with the queries below.")
        (treesit-language-available-p 'bend)))
 
 ;;;###autoload
-(defun bend-ts-mode-install-grammar ()
+(defun bend-ts-mode-install-grammar (&optional out-dir)
   "Download and build the Bend tree-sitter grammar.
-Clones tree-sitter-bend2 at `bend-ts-mode-grammar-revision' and compiles
-it with the system C compiler into the `tree-sitter' directory under
-`user-emacs-directory'.  Needs git and a C compiler."
+Clones tree-sitter-bend2, checks out `bend-ts-mode-grammar-revision'
+and compiles it with the system C compiler into OUT-DIR (default: the
+`tree-sitter' directory under `user-emacs-directory').  Needs git and
+a C compiler."
   (interactive)
   (unless (and (fboundp 'treesit-available-p) (treesit-available-p))
     (user-error "This Emacs was built without tree-sitter support"))
-  (dolist (tool '("git"))
-    (unless (executable-find tool)
-      (user-error "Cannot install the Bend grammar: `%s' not found" tool)))
+  (unless (executable-find "git")
+    (user-error "Cannot install the Bend grammar: `git' not found"))
   (unless (or (executable-find "cc") (executable-find "gcc")
               (executable-find "clang"))
     (user-error "Cannot install the Bend grammar: no C compiler found"))
-  (treesit-install-language-grammar 'bend))
+  (let ((clone (make-temp-file "bend-ts-grammar" t)))
+    (unwind-protect
+        (progn
+          (dolist (args `(("clone" "--quiet" ,bend-ts-mode-grammar-url ,clone)
+                          ("-C" ,clone "checkout" "--quiet"
+                           ,bend-ts-mode-grammar-revision)))
+            (unless (zerop (apply #'call-process "git" nil nil nil args))
+              (error "Cannot fetch the Bend grammar: git %s failed"
+                     (car args))))
+          ;; Build from the pinned local checkout.
+          (let ((treesit-language-source-alist
+                 `((bend ,clone nil "src"))))
+            (treesit-install-language-grammar 'bend out-dir)))
+      (delete-directory clone t))))
 
 ;;; Font lock
 
