@@ -28,6 +28,7 @@
                 (file-name-directory (or load-file-name buffer-file-name))))))
 (require 'bend-mode)
 (require 'bend-mode-flymake)
+(require 'cl-lib)
 
 (defmacro bend-mode-test--with-buffer (content &rest body)
   "Run BODY in a temp `bend-mode' buffer containing CONTENT."
@@ -211,6 +212,170 @@ The code is incomplete, and not a valid proof yet.
     (with-temp-buffer
       (bend-mode)
       (should (= tab-width 3)))))
+
+;;; Tree-sitter mode (bend-ts-mode)
+
+(require 'bend-ts-mode)
+
+(defvar bend-mode-test--grammar-dir
+  (expand-file-name "bend-ts-mode-test-grammar" temporary-file-directory)
+  "Where the test setup builds the Bend grammar when it is not installed.")
+
+(defun bend-mode-test--ensure-grammar ()
+  "Return non-nil if the Bend grammar is loadable, installing it if feasible.
+Tries Emacs's own grammar path first, then a cached build under
+`bend-mode-test--grammar-dir', then builds one there (needs network,
+git and a C compiler)."
+  (and (fboundp 'treesit-available-p)
+       (treesit-available-p)
+       (or (bend-ts-mode-grammar-available-p)
+           (progn
+             (add-to-list 'treesit-extra-load-path bend-mode-test--grammar-dir)
+             (bend-ts-mode-grammar-available-p))
+           (condition-case nil
+               (progn
+                 (make-directory bend-mode-test--grammar-dir t)
+                 (let ((inhibit-message t))
+                   (treesit-install-language-grammar
+                    'bend bend-mode-test--grammar-dir))
+                 (bend-ts-mode-grammar-available-p))
+             (error nil)))))
+
+(defvar bend-mode-test--ts-available 'unknown)
+
+(defun bend-mode-test--ts-p ()
+  "Non-nil when the grammar is available (computed once)."
+  (when (eq bend-mode-test--ts-available 'unknown)
+    (setq bend-mode-test--ts-available
+          (and (bend-mode-test--ensure-grammar) t)))
+  bend-mode-test--ts-available)
+
+(defmacro bend-mode-test--with-ts-buffer (content &rest body)
+  "Run BODY in a temp `bend-ts-mode' buffer containing CONTENT."
+  (declare (indent 1))
+  `(progn
+     (skip-unless (bend-mode-test--ts-p))
+     (with-temp-buffer
+       (insert ,content)
+       (bend-ts-mode)
+       (font-lock-ensure)
+       (goto-char (point-min))
+       ,@body)))
+
+(ert-deftest bend-ts-mode-test-grammar-registered ()
+  (let ((entry (assq 'bend treesit-language-source-alist)))
+    (should entry)
+    (should (equal (nth 2 entry) bend-ts-mode-grammar-revision))
+    (should (string-match-p "tree-sitter-bend2" (nth 1 entry)))))
+
+(ert-deftest bend-ts-mode-test-falls-back-without-grammar ()
+  (let ((bend-ts-mode--fallback-noted t))
+    (cl-letf (((symbol-function 'bend-ts-mode-grammar-available-p)
+               (lambda () nil)))
+      (with-temp-buffer
+        (bend-ts-mode-maybe)
+        (should (eq major-mode 'bend-mode))))))
+
+(ert-deftest bend-ts-mode-test-remap-registered ()
+  (should (eq (alist-get 'bend-mode major-mode-remap-alist)
+              'bend-ts-mode-maybe)))
+
+(ert-deftest bend-ts-mode-test-derives-from-bend-mode ()
+  (should (provided-mode-derived-p 'bend-ts-mode 'bend-mode))
+  (should (eq (keymap-parent bend-ts-mode-map) bend-mode-map))
+  (should (eq (char-table-parent bend-ts-mode-syntax-table)
+              bend-mode-syntax-table)))
+
+(ert-deftest bend-ts-mode-test-maybe-uses-ts ()
+  (skip-unless (bend-mode-test--ts-p))
+  (with-temp-buffer
+    (bend-ts-mode-maybe)
+    (should (eq major-mode 'bend-ts-mode))))
+
+(ert-deftest bend-ts-mode-test-faces ()
+  (bend-mode-test--with-ts-buffer
+      "# note\ndef pow2(+d: Nat) -> U32:\n  ?TODO\n  3n\n  \"hi\"\n"
+    (should (eq (bend-mode-test--face-at "note") 'font-lock-comment-face))
+    (should (eq (bend-mode-test--face-at "def") 'font-lock-keyword-face))
+    (should (eq (bend-mode-test--face-at "pow2") 'font-lock-function-name-face))
+    (should (eq (bend-mode-test--face-at "Nat") 'font-lock-type-face))
+    (should (eq (bend-mode-test--face-at "U32") 'font-lock-type-face))
+    (should (eq (bend-mode-test--face-at "?TODO") 'font-lock-warning-face))
+    (should (eq (bend-mode-test--face-at "3n") 'font-lock-constant-face))
+    (should (eq (bend-mode-test--face-at "hi") 'font-lock-string-face))))
+
+(ert-deftest bend-ts-mode-test-type-and-law-names ()
+  (bend-mode-test--with-ts-buffer
+      "type Shape is\n  Circle(r: U32)\n\nlaw foo:\n  for x: Nat\n  {x == x : Nat}\n"
+    (should (eq (bend-mode-test--face-at "Shape") 'font-lock-type-face))
+    (should (eq (bend-mode-test--face-at "Circle") 'font-lock-type-face))
+    (should (eq (bend-mode-test--face-at "foo") 'font-lock-function-name-face))))
+
+(ert-deftest bend-ts-mode-test-indent-dedents-case ()
+  ;; The regex mode never dedents; the tree rules do.
+  (bend-mode-test--with-ts-buffer
+      "def f(x):\n  match x:\n    case 0n:\n      1n\n    case 1n+p:\n      2n\n"
+    (let ((expected (buffer-string)))
+      (goto-char (point-min))
+      (while (not (eobp))
+        (delete-horizontal-space)
+        (forward-line 1))
+      (indent-region (point-min) (point-max))
+      (should (equal (buffer-string) expected)))))
+
+(ert-deftest bend-ts-mode-test-indent-blank-line-after-colon ()
+  (bend-mode-test--with-ts-buffer "def f() -> U32:\n\n"
+    (forward-line 1)
+    (indent-according-to-mode)
+    (should (= (current-indentation) bend-mode-indent-offset))))
+
+(ert-deftest bend-ts-mode-test-imenu ()
+  (bend-mode-test--with-ts-buffer
+      "type T is\n  A\n\nlaw l:\n  for x: Nat\n  {x == x : Nat}\n\ndef l(x):\n  x\n"
+    (let ((index (treesit-simple-imenu)))
+      (should (assoc "Def" index))
+      (should (assoc "Type" index))
+      (should (assoc "Law" index))
+      (should (assoc "l" (cdr (assoc "Law" index)))))))
+
+(ert-deftest bend-ts-mode-test-defun-navigation ()
+  (bend-mode-test--with-ts-buffer
+      "def a() -> U32:\n  1\n\ndef b() -> U32:\n  2\n"
+    (goto-char (point-max))
+    (beginning-of-defun)
+    (should (looking-at "def b"))
+    (beginning-of-defun)
+    (should (looking-at "def a"))))
+
+(ert-deftest bend-ts-mode-test-flymake-and-eglot-wiring ()
+  (bend-mode-test--with-ts-buffer "def f() -> U32:\n  1\n"
+    (should (memq #'bend-mode-flymake flymake-diagnostic-functions))
+    (should (= tab-width bend-mode-indent-offset)))
+  (when (boundp 'eglot-server-programs)
+    (should (cl-find-if
+             (lambda (e)
+               (let ((k (car e)))
+                 (or (eq k 'bend-ts-mode)
+                     (and (consp k) (eq (car k) 'bend-ts-mode)))))
+             eglot-server-programs))))
+
+(ert-deftest bend-ts-mode-test-examples-parse-and-fontify ()
+  (skip-unless (bend-mode-test--ts-p))
+  (let ((dir (expand-file-name
+              "examples"
+              (file-name-directory
+               (directory-file-name
+                (file-name-directory
+                 (or load-file-name buffer-file-name)))))))
+    (dolist (f (directory-files dir t "\\.bend\\'"))
+      (with-temp-buffer
+        (insert-file-contents f)
+        (bend-ts-mode)
+        (setq-local treesit-font-lock-level 4)
+        (treesit-font-lock-recompute-features)
+        (font-lock-ensure)
+        (should-not (treesit-search-subtree
+                     (treesit-buffer-root-node) "ERROR" nil t))))))
 
 (provide 'bend-mode-test)
 
