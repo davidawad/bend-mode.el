@@ -217,6 +217,14 @@ The code is incomplete, and not a valid proof yet.
 
 (require 'bend-ts-mode)
 
+(defvar bend-mode-test--examples-dir
+  (expand-file-name
+   "examples"
+   (file-name-directory
+    (directory-file-name
+     (file-name-directory (or load-file-name buffer-file-name)))))
+  "The repository's examples/ directory.")
+
 (defvar bend-mode-test--grammar-dir
   (expand-file-name "bend-ts-mode-test-grammar" temporary-file-directory)
   "Where the test setup builds the Bend grammar when it is not installed.")
@@ -310,22 +318,30 @@ git and a C compiler)."
 
 (ert-deftest bend-ts-mode-test-type-and-law-names ()
   (bend-mode-test--with-ts-buffer
-      "type Shape is\n  Circle(r: U32)\n\nlaw foo:\n  for x: Nat\n  {x == x : Nat}\n"
+      "type Shape is Data:\n  Circle{r: U32}\n\nlaw foo:\n  for x: Nat\n  {x == x : Nat}\n"
     (should (eq (bend-mode-test--face-at "Shape") 'font-lock-type-face))
     (should (eq (bend-mode-test--face-at "Circle") 'font-lock-type-face))
     (should (eq (bend-mode-test--face-at "foo") 'font-lock-function-name-face))))
 
-(ert-deftest bend-ts-mode-test-indent-dedents-case ()
-  ;; The regex mode never dedents; the tree rules do.
+(ert-deftest bend-ts-mode-test-indent-keeps-formatted-source ()
+  ;; Indentation is syntax in Bend, so the tree only describes code
+  ;; that is already laid out; re-indenting well-formed code must be a
+  ;; no-op.  The `case' lines dedent from their siblings' bodies, which
+  ;; the regex mode's copy-the-previous-line rule cannot do.
   (bend-mode-test--with-ts-buffer
-      "def f(x):\n  match x:\n    case 0n:\n      1n\n    case 1n+p:\n      2n\n"
+      "def f(x):\n  match x:\n    case 0n:\n      1n\n    case 1n+p:\n      2n\n\ndef g(y):\n  y\n"
     (let ((expected (buffer-string)))
-      (goto-char (point-min))
-      (while (not (eobp))
-        (delete-horizontal-space)
-        (forward-line 1))
       (indent-region (point-min) (point-max))
       (should (equal (buffer-string) expected)))))
+
+(ert-deftest bend-ts-mode-test-regex-mode-cannot-dedent ()
+  ;; Documents the difference to `bend-mode' (see its docstring).
+  (bend-mode-test--with-buffer
+      "def f(x):\n  match x:\n    case 0n:\n      1n\ncase 1n+p:\n"
+    (goto-char (point-min))
+    (forward-line 4)
+    (bend-mode-indent-line)
+    (should (= (current-indentation) 6))))
 
 (ert-deftest bend-ts-mode-test-indent-blank-line-after-colon ()
   (bend-mode-test--with-ts-buffer "def f() -> U32:\n\n"
@@ -335,7 +351,7 @@ git and a C compiler)."
 
 (ert-deftest bend-ts-mode-test-imenu ()
   (bend-mode-test--with-ts-buffer
-      "type T is\n  A\n\nlaw l:\n  for x: Nat\n  {x == x : Nat}\n\ndef l(x):\n  x\n"
+      "type T is Data:\n  A{x: U32}\n\nlaw l:\n  for x: Nat\n  {x == x : Nat}\n\ndef l(x):\n  x\n"
     (let ((index (treesit-simple-imenu)))
       (should (assoc "Def" index))
       (should (assoc "Type" index))
@@ -365,12 +381,7 @@ git and a C compiler)."
 
 (ert-deftest bend-ts-mode-test-examples-parse-and-fontify ()
   (skip-unless (bend-mode-test--ts-p))
-  (let ((dir (expand-file-name
-              "examples"
-              (file-name-directory
-               (directory-file-name
-                (file-name-directory
-                 (or load-file-name buffer-file-name)))))))
+  (let ((dir bend-mode-test--examples-dir))
     (dolist (f (directory-files dir t "\\.bend\\'"))
       (with-temp-buffer
         (insert-file-contents f)
