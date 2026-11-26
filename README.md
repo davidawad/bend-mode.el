@@ -1,5 +1,11 @@
 # bend-mode.el
 
+Emacs support for Bend 2: syntax highlighting, indentation, Eglot formatting, Flymake diagnostics and an optional tree-sitter mode.
+
+![bend-mode highlighting a Bend 2 program](docs/showcase/03-shapes.png)
+
+More renders, and the command that reproduces each: [docs/showcase.md](docs/showcase.md).
+
 An Emacs major mode for [Bend 2](https://github.com/bendlang/bend), a
 dependently typed, affine, Python-shaped language whose compiler targets
 native CPU, Metal/CUDA and JS.
