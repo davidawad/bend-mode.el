@@ -3,6 +3,8 @@
 ;; Real font-lock does the fontification; batch Emacs has no color
 ;; support, so each face is mapped to a color here.
 
+;;; Code:
+
 (require 'bend-mode)
 
 (defconst bend-showcase-palette
@@ -26,7 +28,7 @@
            (if (listp face) face (list face))))
 
 (defun bend-showcase-render (in out title)
-  "Fontify IN with `bend-mode' and write a styled HTML page to OUT."
+  "Fontify IN with `bend-mode' and write a styled HTML page to OUT, titled TITLE."
   (with-temp-buffer
     (insert-file-contents in)
     (bend-mode)
